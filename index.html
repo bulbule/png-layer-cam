@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNG Layer Cam</title>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-color: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text: #1e293b;
+            --text-light: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 0.8rem;
+            color: var(--text-light);
+        }
+
+        /* Bingkai Kamera 9:16 Sesuai Mockup */
+        .cam-container {
+            position: relative;
+            width: 100%;
+            max-width: 340px;
+            aspect-ratio: 9 / 16;
+            background-color: #1e293b;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+        }
+
+        .video-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.1s ease-out;
+        }
+
+        video.mirror {
+            transform: scaleX(-1);
+        }
+
+        #user-photo {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+            z-index: 4;
+        }
+
+        /* Canvas Tersembunyi untuk Render Video/Foto */
+        #render-canvas {
+            display: none;
+        }
+
+        .template-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+        }
+
+        /* --- UI DI DALAM FRAME KAMERA (OVERLAY) --- */
+        
+        /* Timer Durasi Video */
+        .timer-display {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: monospace;
+            z-index: 12;
+            display: none;
+            letter-spacing: 1px;
+        }
+
+        /* Tombol Aksi Utama Bulat Biru */
+        .action-btn {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background-color: var(--primary);
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .action-btn:active {
+            transform: translateX(-50%) scale(0.9);
+        }
+
+        /* Animasi saat mode rekam video aktif (Berubah jadi kotak) */
+        .action-btn.recording {
+            border-radius: 14px;
+            background-color: #ef4444;
+            width: 60px;
+            height: 60px;
+        }
+
+        /* Tombol Flip Kamera Samping */
+        .flip-btn {
+            position: absolute;
+            bottom: 45px;
+            right: 35px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            cursor: pointer;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+            transition: background 0.2s;
+        }
+
+        /* --- KONTROL DI LUAR KAMERA --- */
+        
+        .controls {
+            width: 100%;
+            max-width: 340px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        /* Slider Zoom */
+        .zoom-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--card-color);
+            padding: 10px 14px;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .zoom-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 5px;
+            border-radius: 3px;
+            background: #e2e8f0;
+            outline: none;
+        }
+
+        .zoom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            background-color: var(--card-color);
+            color: var(--text);
+            border: 1px solid #e2e8f0;
+            padding: 12px;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* Segmented Control VIDEO / FOTO */
+        .mode-switch {
+            display: flex;
+            background: #f1f5f9;
+            padding: 4px;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+            margin-top: 5px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 10px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--text-light);
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .mode-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>PNG Layer Cam</h1>
+        <p>Designed for Simplicity</p>
+    </header>
+
+    <div class="cam-container">
+        <div class="timer-display" id="timer">00:00:00</div>
+
+        <div class="video-wrapper">
+            <video id="video" autoplay playsinline class="mirror"></video>
+        </div>
+        <img id="user-photo" alt="Freeze / Upload Area">
+        <img id="overlay" class="template-overlay" src="" alt="Template">
+
+        <button class="action-btn" id="action-btn" disabled></button>
+        <button class="flip-btn" id="flip-btn">🔄</button>
+    </div>
+
+    <div class="controls">
+        <input type="file" id="template-input" accept="image/png">
+        <input type="file" id="photo-input" accept="image/*">
+
+        <div class="zoom-control" id="zoom-area">
+            <span style="color:var(--primary); font-weight:bold;">➖</span>
+            <input type="range" id="zoom-slider" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+            <span style="color:var(--primary); font-weight:bold;">➕</span>
+        </div>
+
+        <div class="btn-group" id="upload-group">
+            <button class="btn" onclick="document.getElementById('template-input').click()">
+                📁 Template PNG
+            </button>
+            <button class="btn" onclick="document.getElementById('photo-input').click()">
+                🖼️ Upload Foto
+            </button>
+        </div>
+
+        <div class="btn-group" id="after-controls" style="display: none;">
+            <button class="btn" id="reset-btn" style="background:#ef4444; color:white; border:none;">🔄 Ambil Ulang</button>
+            <button class="btn" id="download-btn" style="background:#10b981; color:white; border:none;">📥 Simpan Ke Galeri</button>
+        </div>
+
+        <div class="mode-switch">
+            <button class="mode-btn" id="mode-video">Video</button>
+            <button class="mode-btn active" id="mode-foto">Foto</button>
+        </div>
+    </div>
+
+    <canvas id="render-canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const userPhoto = document.getElementById('user-photo');
+        const overlay = document.getElementById('overlay');
+        const timerDisplay = document.getElementById('timer');
+        
+        const templateInput = document.getElementById('template-input');
+        const photoInput = document.getElementById('photo-input');
+        
+        const actionBtn = document.getElementById('action-btn');
+        const flipBtn = document.getElementById('flip-btn');
+        const zoomSlider = document.getElementById('zoom-slider');
+        
+        const uploadGroup = document.getElementById('upload-group');
+        const afterControls = document.getElementById('after-controls');
+        const downloadBtn = document.getElementById('download-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        
+        const modeVideoBtn = document.getElementById('mode-video');
+        const modeFotoBtn = document.getElementById('mode-foto');
+        const renderCanvas = document.getElementById('render-canvas');
+
+        let currentStream = null;
+        let useFacingMode = "user"; 
+        let templateImage = null;
+        let isUsingCamera = true;
+        
+        let currentMode = "foto"; // "foto" atau "video"
+        let isRecording = false;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let animationFrameId = null;
+        
+        let timerInterval = null;
+        let startTime = 0;
+        let currentZoomScale = 1;
+        let finalVideoBlob = null;
+        let finalPhotoDataURL = null;
+
+        // 1. Zoom Live Preview
+        zoomSlider.addEventListener('input', (e) => {
+            currentZoomScale = parseFloat(e.target.value);
+            updateVideoZoom();
+        });
+
+        function updateVideoZoom() {
+            if (useFacingMode === "user") {
+                video.style.transform = `scaleX(-1) scale(${currentZoomScale})`;
+            } else {
+                video.style.transform = `scale(${currentZoomScale})`;
+            }
+        }
+
+        // 2. Jalankan Kamera Stream
+        async function startCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            zoomSlider.value = 1;
+            currentZoomScale = 1;
+
+            if (useFacingMode === "user") {
+                video.className = 'mirror';
+            } else {
+                video.className = '';
+            }
+            updateVideoZoom();
+
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: useFacingMode, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: 9/16 },
+                    audio: true // Aktifkan audio saat rekam video
+                });
+                video.srcObject = currentStream;
+                video.style.display = 'block';
+                userPhoto.style.display = 'none';
+                isUsingCamera = true;
+                
+                flipBtn.style.display = 'flex';
+                actionBtn.style.display = 'flex';
+                uploadGroup.style.display = 'flex';
+                afterControls.style.display = 'none';
+                timerDisplay.style.display = 'none';
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        startCamera();
+
+        flipBtn.addEventListener('click', () => {
+            useFacingMode = (useFacingMode === "user") ? "environment" : "user";
+            startCamera();
+        });
+
+        // Switch Mode (Foto / Video) Sesuai UI Mockup
+        modeFotoBtn.addEventListener('click', () => {
+            if(isRecording) return;
+            currentMode = "foto";
+            modeFotoBtn.classList.add('active');
+            modeVideoBtn.classList.remove('active');
+            timerDisplay.style.display = 'none';
+            actionBtn.classList.remove('recording');
+        });
+
+        modeVideoBtn.addEventListener('click', () => {
+            if(isRecording) return;
+            currentMode = "video";
+            modeVideoBtn.classList.add('active');
+            modeFotoBtn.classList.remove('active');
+        });
+
+        // 3. Handle Template Upload
+        templateInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    overlay.src = event.target.result;
+                    overlay.style.display = 'block';
+                    templateImage = new Image();
+                    templateImage.src = event.target.result;
+                    templateImage.onload = () => { actionBtn.disabled = false; };
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 4. Handle Upload Foto dari Galeri
+        photoInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+                    video.style.display = 'none';
+                    userPhoto.src = event.target.result;
+                    userPhoto.style.display = 'block';
+                    isUsingCamera = false;
+                    
+                    // Buat preview statis gabungan langsung
+                    setTimeout(() => {
+                        processStaticPhoto();
+                        actionBtn.style.display = 'none';
+                        flipBtn.style.display = 'none';
+                        uploadGroup.style.display = 'none';
+                        afterControls.style.display = 'flex';
+                    }, 200);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // --- PROSES TOMBOL AKSI UTAMA (BULAT) ---
+        actionBtn.addEventListener('click', () => {
+            if (currentMode === "foto") {
+                executePhotoCapture();
+            } else {
+                if (!isRecording) {
+                    startVideoRecording();
+                } else {
+                    stopVideoRecording();
+                }
+            }
+        });
+
+        // 5. Eksekusi Ambil Foto (Freeze & Lock)
+        function executePhotoCapture() {
+            renderCanvas.width = 1080;
+            renderCanvas.height = 1920;
+            const ctx = renderCanvas.getContext('2d');
+            
+            ctx.translate(1080 / 2, 1920 / 2);
+            if (useFacingMode === "user") {
+                ctx.scale(-currentZoomScale, currentZoomScale);
+            } else {
+                ctx.scale(currentZoomScale, currentZoomScale);
+            }
+            ctx.drawImage(video, -1080/2, -1920/2, 1080, 1920);
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            if (templateImage) ctx.drawImage(templateImage, 0, 0, 1080, 1920);
+
+            finalPhotoDataURL = renderCanvas.toDataURL('image/jpeg', 0.95);
+            userPhoto.src = finalPhotoDataURL;
+            userPhoto.style.display = 'block';
+            video.style.display = 'none';
+            
+            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+
+            actionBtn.style.display = 'none';
+            flipBtn.style.display = 'none';
+            uploadGroup.style.display = 'none';
+            afterControls.style.display = 'flex';
+        }
+
+        function processStaticPhoto() {
+            renderCanvas.width = 1080;
+            renderCanvas.height = 1920;
+            const ctx = renderCanvas.getContext('2d');
+            const bg = new Image();
+            bg.src = userPhoto.src;
+            bg.onload = () => {
+                ctx.drawImage(bg, 0, 0, 1080, 1920);
+                if (templateImage) ctx.drawImage(templateImage, 0, 0, 1080, 1920);
+                finalPhotoDataURL = renderCanvas.toDataURL('image/jpeg', 0.95);
+            };
+        }
+
+        // --- 6. FITUR REKAM VIDEO LIVE REAL-TIME CANVAS ---
+        function startVideoRecording() {
+            isRecording = true;
+            recordedChunks = [];
+            actionBtn.classList.add('recording'); // Berubah jadi kotak sesuai keinginan
+            timerDisplay.style.display = 'block';
+            
+            // Jalankan Timer
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 1000);
+
+            renderCanvas.width = 720; // Resolusi video web ideal
+            renderCanvas.height = 1280;
+            const ctx = renderCanvas.getContext('2d');
+
+            // Render loop agar template PNG menempel secara realtime di rekaman video
+            function drawFrame() {
+                if (!isRecording) return;
+                ctx.clearRect(0, 0, 720, 1280);
+                
+                ctx.save();
+                ctx.translate(720 / 2, 1280 / 2);
+                if (useFacingMode === "user") {
+                    ctx.scale(-currentZoomScale, currentZoomScale);
+                } else {
+                    ctx.scale(currentZoomScale, currentZoomScale);
+                }
+                ctx.drawImage(video, -720/2, -1280/2, 720, 1280);
+                ctx.restore();
+
+                if (templateImage) {
+                    ctx.drawImage(templateImage, 0, 0, 720, 1280);
+                }
+                animationFrameId = requestAnimationFrame(drawFrame);
+            }
+            drawFrame();
+
+            // Ambil stream dari canvas yang sudah digabung
+            const canvasStream = renderCanvas.captureStream(30);
+            
+            // Ambil audio asli dari mic bawaan HP
+            if(currentStream.getAudioTracks().length > 0) {
+                canvasStream.addTrack(currentStream.getAudioTracks()[0]);
+            }
+
+            // Inisialisasi format perekam video browser
+            const options = { mimeType: 'video/webm;codecs=vp8,opus' };
+            try {
+                mediaRecorder = new MediaRecorder(canvasStream, options);
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(canvasStream); // Fallback format standar
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                finalVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
+                
+                // Matikan kamera setelah stop rekam
+                if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+                
+                actionBtn.style.display = 'none';
+                flipBtn.style.display = 'none';
+                uploadGroup.style.display = 'none';
+                afterControls.style.display = 'flex';
+            };
+
+            mediaRecorder.start();
+        }
+
+        function stopVideoRecording() {
+            isRecording = false;
+            actionBtn.classList.remove('recording');
+            clearInterval(timerInterval);
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+            }
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        }
+
+        // Fungsi Format Timer Realtime
+        function updateTimer() {
+            const elapsed = Date.now() - startTime;
+            const secs = Math.floor((elapsed / 1000) % 60);
+            const mins = Math.floor((elapsed / (1000 * 60)) % 60);
+            const hours = Math.floor((elapsed / (1000 * 60 * 60)) % 24);
+            
+            const fH = String(hours).padStart(2, '0');
+            const fM = String(mins).padStart(2, '0');
+            const fS = String(secs).padStart(2, '0');
+            
+            timerDisplay.innerText = `${fH}:${fM}:${fS}`;
+        }
+
+        // 7. Simpan Hasil Akhir (Mendeteksi otomatis Foto/Video)
+        downloadBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            if (currentMode === "foto" || !isUsingCamera) {
+                link.download = `PNG_Cam_${Date.now()}.jpg`;
+                link.href = finalPhotoDataURL;
+            } else {
+                link.download = `PNG_Video_${Date.now()}.mp4`;
+                link.href = URL.createObjectURL(finalVideoBlob);
+            }
+            link.click();
+        });
+
+        // 8. Ambil Ulang / Reset
+        resetBtn.addEventListener('click', () => {
+            finalVideoBlob = null;
+            finalPhotoDataURL = null;
+            startCamera();
+        });
+    </script>
+</body>
+</html>
